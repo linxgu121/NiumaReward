@@ -1,0 +1,16 @@
+{
+  "name": "NiumaReward.Runtime",
+  "references": [
+    "NiumaCore.Runtime",
+    "NiumaInventory.Runtime",
+    "NiumaGrowth.Runtime"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": []
+}
