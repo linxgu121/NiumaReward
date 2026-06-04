@@ -84,6 +84,12 @@ namespace NiumaReward.Service
                         continue;
                     }
 
+                    if (!ValidatePackageDefinition(package, out var packageError))
+                    {
+                        Debug.LogError($"{DebugPrefix} 奖励包配置无效：RewardPackageId={package.RewardPackageId}，原因={packageError}", package);
+                        continue;
+                    }
+
                     _packageMap.Add(package.RewardPackageId, package);
                 }
             }
@@ -147,19 +153,21 @@ namespace NiumaReward.Service
         /// <inheritdoc />
         public bool IsClaimed(string idempotencyKey)
         {
-            return !string.IsNullOrWhiteSpace(idempotencyKey) && _claimRecords.ContainsKey(idempotencyKey);
+            var normalizedKey = RewardProtocolUtility.NormalizeIdempotencyKey(idempotencyKey);
+            return RewardProtocolUtility.IsValidIdempotencyKey(normalizedKey) && _claimRecords.ContainsKey(normalizedKey);
         }
 
         /// <inheritdoc />
         public bool TryGetClaimRecord(string idempotencyKey, out RewardClaimRecord record)
         {
             record = null;
-            if (string.IsNullOrWhiteSpace(idempotencyKey))
+            var normalizedKey = RewardProtocolUtility.NormalizeIdempotencyKey(idempotencyKey);
+            if (!RewardProtocolUtility.IsValidIdempotencyKey(normalizedKey))
             {
                 return false;
             }
 
-            if (!_claimRecords.TryGetValue(idempotencyKey, out var existing) || existing == null)
+            if (!_claimRecords.TryGetValue(normalizedKey, out var existing) || existing == null)
             {
                 return false;
             }
@@ -212,6 +220,22 @@ namespace NiumaReward.Service
         /// <inheritdoc />
         public RewardGrantResult GrantReward(RewardGrantRequest request)
         {
+            if (request != null)
+            {
+                request.IdempotencyKey = RewardProtocolUtility.NormalizeIdempotencyKey(request.IdempotencyKey);
+                if (!RewardProtocolUtility.IsValidIdempotencyKey(request.IdempotencyKey))
+                {
+                    return StoreFailureAndPublish(RewardGrantResult.Failed(
+                        RewardFailureReason.InvalidRequest,
+                        request.ActorId,
+                        request.SourceModule,
+                        request.SourceId,
+                        request.IdempotencyKey,
+                        null,
+                        "奖励发放请求缺少合法 IdempotencyKey。IdempotencyKey 必须非空、长度不超过 128，且不能包含空白字符。"));
+                }
+            }
+
             if (!ValidateGrantRequest(request, out var failedRequestResult))
             {
                 return StoreFailureAndPublish(failedRequestResult);
@@ -325,12 +349,13 @@ namespace NiumaReward.Service
         /// <inheritdoc />
         public RewardGrantResult ClearClaimRecord(string idempotencyKey)
         {
-            if (string.IsNullOrWhiteSpace(idempotencyKey))
+            var normalizedKey = RewardProtocolUtility.NormalizeIdempotencyKey(idempotencyKey);
+            if (!RewardProtocolUtility.IsValidIdempotencyKey(normalizedKey))
             {
                 return StoreFailureAndPublish(RewardGrantResult.Failed(RewardFailureReason.InvalidRequest, message: "清除领取记录失败：IdempotencyKey 为空。"));
             }
 
-            if (!_claimRecords.Remove(idempotencyKey))
+            if (!_claimRecords.Remove(normalizedKey))
             {
                 var notFound = RewardGrantResult.Success(idempotencyKey: idempotencyKey, message: "领取记录不存在，无需清除。");
                 _lastResult = notFound.Clone();
@@ -340,7 +365,7 @@ namespace NiumaReward.Service
             BumpRevision();
             var result = RewardGrantResult.Success(idempotencyKey: idempotencyKey, message: "领取记录已清除。");
             _lastResult = result.Clone();
-            PublishClaimCleared(idempotencyKey);
+            PublishClaimCleared(normalizedKey);
             return result;
         }
 
@@ -391,12 +416,30 @@ namespace NiumaReward.Service
                     return StoreFailureAndPublish(RewardGrantResult.Failed(RewardFailureReason.DataCorrupted, message: $"奖励领取记录无效：Index={i}"));
                 }
 
-                if (imported.ContainsKey(record.IdempotencyKey))
+                var normalizedKey = RewardProtocolUtility.NormalizeIdempotencyKey(record.IdempotencyKey);
+                if (!RewardProtocolUtility.IsValidIdempotencyKey(normalizedKey))
+                {
+                    return StoreFailureAndPublish(RewardGrantResult.Failed(RewardFailureReason.DataCorrupted, idempotencyKey: normalizedKey, message: $"奖励领取记录 IdempotencyKey 非法：Index={i}"));
+                }
+
+                if (record.ClaimedAtUnixMs <= 0)
+                {
+                    return StoreFailureAndPublish(RewardGrantResult.Failed(RewardFailureReason.DataCorrupted, idempotencyKey: normalizedKey, message: $"奖励领取记录 ClaimedAtUnixMs 非法：Index={i}, ClaimedAtUnixMs={record.ClaimedAtUnixMs}"));
+                }
+
+                if (!ValidateEntrySnapshots(record.Entries, out var entrySnapshotMessage))
+                {
+                    return StoreFailureAndPublish(RewardGrantResult.Failed(RewardFailureReason.DataCorrupted, idempotencyKey: normalizedKey, message: $"奖励领取记录条目无效：Index={i}，原因={entrySnapshotMessage}"));
+                }
+
+                if (imported.ContainsKey(normalizedKey))
                 {
                     return StoreFailureAndPublish(RewardGrantResult.Failed(RewardFailureReason.DataCorrupted, idempotencyKey: record.IdempotencyKey, message: $"奖励领取记录重复：{record.IdempotencyKey}"));
                 }
 
-                imported.Add(record.IdempotencyKey, record.Clone());
+                var importedRecord = record.Clone();
+                importedRecord.IdempotencyKey = normalizedKey;
+                imported.Add(normalizedKey, importedRecord);
             }
 
             _claimRecords.Clear();
@@ -408,6 +451,82 @@ namespace NiumaReward.Service
             Revision = snapshot.Revision;
             _lastResult = snapshot.LastResult?.Clone();
             return RewardGrantResult.Success(message: "奖励存档导入成功。");
+        }
+
+        private static bool ValidateEntrySnapshots(RewardEntrySnapshot[] entries, out string message)
+        {
+            message = null;
+            if (entries == null || entries.Length == 0)
+            {
+                message = "奖励条目快照为空。";
+                return false;
+            }
+
+            var rewardIds = new HashSet<string>(StringComparer.Ordinal);
+            for (var i = 0; i < entries.Length; i++)
+            {
+                var entry = entries[i];
+                if (entry == null)
+                {
+                    message = $"奖励条目快照为空：Index={i}";
+                    return false;
+                }
+
+                if (!string.IsNullOrWhiteSpace(entry.RewardId) && !rewardIds.Add(entry.RewardId))
+                {
+                    message = $"奖励条目快照 RewardId 重复：{entry.RewardId}";
+                    return false;
+                }
+
+                var rewardType = RewardProtocolUtility.NormalizeRewardType(entry.RewardType);
+                if (string.IsNullOrWhiteSpace(rewardType))
+                {
+                    message = $"奖励条目快照 RewardType 为空：RewardId={entry.RewardId}";
+                    return false;
+                }
+
+                if (entry.Amount <= 0)
+                {
+                    message = $"奖励条目快照 Amount 必须大于 0：RewardId={entry.RewardId}";
+                    return false;
+                }
+
+                if ((RewardType.IsInventoryType(rewardType) || RewardType.IsGrowthType(rewardType)) &&
+                    string.IsNullOrWhiteSpace(entry.TargetId))
+                {
+                    message = $"奖励条目快照 TargetId 为空：RewardId={entry.RewardId}, RewardType={entry.RewardType}";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private bool ValidatePackageDefinition(RewardPackageDefinition package, out string message)
+        {
+            message = null;
+            if (package == null)
+            {
+                message = "奖励包为空。";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(package.RewardPackageId))
+            {
+                message = "RewardPackageId 为空。";
+                return false;
+            }
+
+            _entryBuffer.Clear();
+            var entries = package.Entries ?? Array.Empty<RewardEntryData>();
+            for (var i = 0; i < entries.Length; i++)
+            {
+                _entryBuffer.Add(entries[i]?.Clone());
+            }
+
+            var valid = ValidateEntries(_entryBuffer, out _, out _, out message);
+            _entryBuffer.Clear();
+            return valid;
         }
 
         private bool ValidateGrantRequest(RewardGrantRequest request, out RewardGrantResult failedResult)
@@ -498,7 +617,9 @@ namespace NiumaReward.Service
 
             if (entries == null || entries.Count == 0)
             {
-                return true;
+                failureReason = RewardFailureReason.EntryInvalid;
+                message = "奖励条目为空。";
+                return false;
             }
 
             var rewardIds = new HashSet<string>(StringComparer.Ordinal);

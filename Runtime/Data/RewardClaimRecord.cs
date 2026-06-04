@@ -13,7 +13,7 @@ namespace NiumaReward.Data
         public string ActorId;
         public string SourceModule;
         public string SourceId;
-        public long ClaimedAtUnixMs;
+        public long ClaimedAtUnixMs = -1L;
         public RewardEntrySnapshot[] Entries = Array.Empty<RewardEntrySnapshot>();
 
         public RewardClaimRecord Clone()

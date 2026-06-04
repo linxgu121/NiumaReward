@@ -16,8 +16,34 @@ namespace NiumaReward.Data
         public static string NormalizeRewardType(string rewardType)
         {
             return string.IsNullOrWhiteSpace(rewardType)
-                ? null
+                ? string.Empty
                 : rewardType.Trim().ToLowerInvariant();
+        }
+
+        public static string NormalizeIdempotencyKey(string idempotencyKey)
+        {
+            return string.IsNullOrWhiteSpace(idempotencyKey)
+                ? string.Empty
+                : idempotencyKey.Trim();
+        }
+
+        public static bool IsValidIdempotencyKey(string idempotencyKey)
+        {
+            var normalized = NormalizeIdempotencyKey(idempotencyKey);
+            if (normalized.Length == 0 || normalized.Length > 128)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < normalized.Length; i++)
+            {
+                if (char.IsWhiteSpace(normalized[i]) || char.IsControl(normalized[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         public static bool IsInventoryReward(string rewardType)
