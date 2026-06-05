@@ -35,7 +35,7 @@ namespace NiumaReward.Controller
         [Tooltip("成长模块控制器。成长经验奖励会通过它增加经验；为空时可从 GameContext 解析。")]
         [SerializeField] private NiumaGrowthController growthController;
 
-        [Tooltip("自定义奖励处理器提供者。数组中的组件必须实现 IRewardGrantHandler。")]
+        [Tooltip("自定义奖励处理脚本列表。只有发放非物品、非成长经验奖励时才拖，例如称号、成就、剧情标记奖励处理器；普通物品、货币和成长经验奖励不用填。")]
         [SerializeField] private MonoBehaviour[] customGrantHandlerProviders = Array.Empty<MonoBehaviour>();
 
         [Tooltip("初始化时是否自动查找场景中的 Inventory / Growth 控制器。正式场景建议手动绑定，自动查找只作为开发兜底。")]
@@ -530,7 +530,7 @@ namespace NiumaReward.Controller
 
                 if (!_warnedInvalidGrantHandler && logWarnings)
                 {
-                    Debug.LogWarning($"[NiumaReward] 自定义奖励处理器绑定无效：{provider.name} 没有实现 IRewardGrantHandler。", provider);
+                    Debug.LogWarning($"[NiumaReward] 自定义奖励处理脚本绑定无效：{provider.name}。只有称号、成就、剧情标记等自定义奖励才需要绑定处理脚本；普通奖励不用填。", provider);
                     _warnedInvalidGrantHandler = true;
                 }
             }
