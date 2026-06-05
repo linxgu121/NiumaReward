@@ -3,7 +3,8 @@
   "references": [
     "NiumaCore.Runtime",
     "NiumaInventory.Runtime",
-    "NiumaGrowth.Runtime"
+    "NiumaGrowth.Runtime",
+    "NiumaQuest.Runtime"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

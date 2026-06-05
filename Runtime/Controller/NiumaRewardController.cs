@@ -150,10 +150,12 @@ namespace NiumaReward.Controller
                 _context = targetContext;
                 ResolveDependencies(_context);
 
-                var inventoryService = ResolveInventoryService(_context);
-                var growthService = ResolveGrowthService(_context);
+                var inventoryService = ResolveInventoryService(_context, out var inventorySource);
+                var growthService = ResolveGrowthService(_context, out var growthSource);
                 var grantHandlers = ResolveGrantHandlers();
                 var snapshot = previousService != null ? previousService.ExportSnapshot() : null;
+                LogDependencySource("Inventory", inventorySource);
+                LogDependencySource("Growth", growthSource);
 
                 newService = new RewardService(rewardPackages, inventoryService, growthService, grantHandlers, _context?.EventBus);
                 if (snapshot != null)
@@ -456,24 +458,30 @@ namespace NiumaReward.Controller
             }
         }
 
-        private IInventoryService ResolveInventoryService(GameContext context)
+        private IInventoryService ResolveInventoryService(GameContext context, out string source)
         {
             if (inventoryController != null && inventoryController.InventoryService != null)
             {
+                source = "Inspector 绑定的 NiumaInventoryController";
                 return inventoryController.InventoryService;
             }
 
-            return context != null ? context.GetService<IInventoryService>() : null;
+            var service = context != null ? context.GetService<IInventoryService>() : null;
+            source = service != null ? "GameContext 中的 IInventoryService" : "未解析";
+            return service;
         }
 
-        private IGrowthService ResolveGrowthService(GameContext context)
+        private IGrowthService ResolveGrowthService(GameContext context, out string source)
         {
             if (growthController != null && growthController.GrowthService != null)
             {
+                source = "Inspector 绑定的 NiumaGrowthController";
                 return growthController.GrowthService;
             }
 
-            return context != null ? context.GetService<IGrowthService>() : null;
+            var service = context != null ? context.GetService<IGrowthService>() : null;
+            source = service != null ? "GameContext 中的 IGrowthService" : "未解析";
+            return service;
         }
 
         private IRewardGrantHandler[] ResolveGrantHandlers()
@@ -484,6 +492,7 @@ namespace NiumaReward.Controller
             }
 
             var handlers = new List<IRewardGrantHandler>(customGrantHandlerProviders.Length);
+            var usedRewardTypes = new HashSet<string>(StringComparer.Ordinal);
             for (var i = 0; i < customGrantHandlerProviders.Length; i++)
             {
                 var provider = customGrantHandlerProviders[i];
@@ -494,6 +503,27 @@ namespace NiumaReward.Controller
 
                 if (provider is IRewardGrantHandler handler)
                 {
+                    var rewardType = RewardProtocolUtility.NormalizeRewardType(handler.RewardType);
+                    if (string.IsNullOrWhiteSpace(rewardType))
+                    {
+                        if (logWarnings)
+                        {
+                            Debug.LogWarning($"[NiumaReward] 自定义奖励处理器 RewardType 为空：{provider.name}，已忽略。", provider);
+                        }
+
+                        continue;
+                    }
+
+                    if (!usedRewardTypes.Add(rewardType))
+                    {
+                        if (logWarnings)
+                        {
+                            Debug.LogWarning($"[NiumaReward] 自定义奖励处理器 RewardType 重复：{rewardType}，组件={provider.name} 已忽略。", provider);
+                        }
+
+                        continue;
+                    }
+
                     handlers.Add(handler);
                     continue;
                 }
@@ -506,6 +536,22 @@ namespace NiumaReward.Controller
             }
 
             return handlers.ToArray();
+        }
+
+        private void LogDependencySource(string dependencyName, string source)
+        {
+            if (!logWarnings)
+            {
+                return;
+            }
+
+            if (string.Equals(source, "未解析", StringComparison.Ordinal))
+            {
+                Debug.LogWarning($"[NiumaReward] {dependencyName} 依赖未解析。相关奖励类型在发放时会返回结构化失败。", this);
+                return;
+            }
+
+            Debug.Log($"[NiumaReward] {dependencyName} 依赖来源：{source}。", this);
         }
 
         private void RegisterServicesToContext()
