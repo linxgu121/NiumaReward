@@ -189,3 +189,42 @@ RewardTestRoot
 - 自定义奖励处理器发放成功。
 - UI ViewData 的货币 / 成长经验标记正确。
 - 成功、失败、清理领取记录事件能发布。
+
+## 场景挂载与 Inspector 配置
+### NiumaRewardController
+建议挂载位置：`CoreScene/BootstrapRoot/GameplayServicesRoot/RewardRoot`。
+
+用途：统一发放任务、剧情、活动等奖励，处理幂等 Key、背包预检、成长经验和自定义奖励。
+
+| 字段 | 怎么填 | 可否留空 | 不填会怎样 |
+| --- | --- | --- | --- |
+| `Reward Packages` | 拖奖励包配置资产 | 可以 | 仍可通过请求临时发奖励，但无法按 PackageId 查找 |
+| `Inventory Controller` | 拖 `NiumaInventoryController` | 物品奖励不可以 | 物品/货币奖励无法发放 |
+| `Growth Controller` | 拖 `NiumaGrowthController` | 成长经验奖励不可以 | 成长经验奖励无法发放 |
+| `Grant Handler Providers` | 拖自定义奖励处理器 | 自定义奖励时不可以 | 自定义奖励返回 HandlerMissing |
+| `Register Service To Context` | 核心场景开启 | 可以关闭 | QuestBridge 等模块无法获取奖励服务 |
+
+### NiumaRewardQuestBridge
+建议挂载位置：`CoreScene/BootstrapRoot/GameplayServicesRoot/RewardRoot/QuestBridge`。
+
+| 字段 | 怎么填 | 可否留空 | 不填会怎样 |
+| --- | --- | --- | --- |
+| `Reward Controller` | 拖 `NiumaRewardController` | 不建议 | 无法代发任务奖励 |
+| `Quest Controller` | 拖 `NiumaQuestController` | 不建议 | 无法读取 Completed/RewardPending 任务 |
+| `Auto Grant On Tick` | 希望自动发任务奖励时开启 | 可以 | 关闭后需要手动调用重试 |
+
+### NiumaRewardSaveAdapter
+建议挂载位置：`CoreScene/BootstrapRoot/SaveRoot/SaveAdapters`。
+
+| 字段 | 怎么填 | 可否留空 | 不填会怎样 |
+| --- | --- | --- | --- |
+| `Reward Controller` | 拖 `NiumaRewardController` | 不建议 | 已领取记录不存档，可能重复发奖 |
+| `Save Controller` | 拖 `NiumaSaveController` | 不建议 | 无法注册存档 Provider |
+
+### RewardUIViewBridge
+建议挂载位置：奖励弹窗或任务奖励预览 UI 物体。
+
+| 字段 | 怎么填 | 可否留空 | 不填会怎样 |
+| --- | --- | --- | --- |
+| `Reward Controller` | 拖 `NiumaRewardController` | 不建议 | UI 不刷新 |
+| `Receiver Provider` | 拖奖励 UI 接收脚本 | 不可以 | 发奖结果和预览无处显示 |
