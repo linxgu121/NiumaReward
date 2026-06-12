@@ -228,3 +228,37 @@ RewardTestRoot
 | --- | --- | --- | --- |
 | `Reward Controller` | 拖 `NiumaRewardController` | 不建议 | UI 不刷新 |
 | `Receiver Provider` | 拖奖励 UI 接收脚本 | 不可以 | 发奖结果和预览无处显示 |
+
+### RewardToolkitReceiver
+建议挂载位置：`CoreScene/BootstrapRoot/UIRoot/UIBridges/RewardToolkitReceiver`。
+
+用途：UI Toolkit 奖励面板接收端。把 `RewardUIViewBridge` 生成的 `RewardUIUpdate` 推给 `UIToolkitUIManager` 的 `RewardPanel` View。
+
+推荐绑定：
+
+1. 在 `UIRoot/UIBridges` 下创建 `RewardToolkitReceiver` 物体。
+2. 挂 `RewardToolkitReceiver`。
+3. `UI Manager` 拖 `UIRoot/UIManager` 上的 `UIToolkitUIManager`。
+4. `Reward View Id` 默认 `RewardPanel`，要和 `UIToolkitViewRegistrySO` 里的 ViewId 一致。
+5. 把 `RewardToolkitReceiver` 拖到 `RewardUIViewBridge.Reward UI Receiver Provider`。
+
+| 字段 | 怎么填 | 可否留空 | 不填会怎样 |
+| --- | --- | --- | --- |
+| `UI Manager` | 拖 `UIToolkitUIManager` | 不建议 | 会尝试自动查找，失败则奖励 Toolkit UI 不刷新 |
+| `Reward View Id` | 填 `RewardPanel` 或你注册的奖励 ViewId | 不建议 | ViewId 不匹配时窗口打不开 |
+| `Auto Open View` | 打开奖励预览或发奖结果时建议开启 | 可以 | 关闭后需要外部先打开 `RewardPanel` |
+| `Close On Cleared` | 建议开启 | 可以 | 奖励请求清空时窗口不会自动关闭 |
+
+### RewardToolkitBindingProvider
+建议挂载位置：CoreScene/BootstrapRoot/UIRoot/UIToolkitRoot/BindingProviders/RewardBindingProvider。
+
+用途：把 RewardToolkitReceiver 推给 RewardPanel 的 RewardUIUpdate 渲染到 UXML。没有它，奖励预览和发放结果不会显示。
+
+| 字段 | 怎么填 | 可否留空 | 不填会怎样 |
+| --- | --- | --- | --- |
+| Provider Id | 默认 RewardPanel，与 Registry 的 BindingProviderId 一致 | 不建议 | 不匹配时回退空 Binding |
+| List Root Name | 奖励条目列表容器，默认 ListRoot | 可以 | 不显示奖励条目 |
+| Detail Label Name | 奖励预览详情，默认 DetailText | 可以 | 不显示发奖目标/来源 |
+| Result Label Name | 发放成功/失败结果，默认 ResultText | 可以 | 不显示发放结果 |
+
+UXML 至少建议包含：TitleText、StatusText、ListRoot、DetailText、ResultText、EmptyRoot。
