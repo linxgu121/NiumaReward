@@ -262,3 +262,12 @@ RewardTestRoot
 | Result Label Name | 发放成功/失败结果，默认 ResultText | 可以 | 不显示发放结果 |
 
 UXML 至少建议包含：TitleText、StatusText、ListRoot、DetailText、ResultText、EmptyRoot。
+
+## 配置资产粒度基准
+
+NiumaReward 按“一个奖励包一个资产”管理。
+
+- `RewardPackageDefinition`：一个奖励包一个资产，例如任务完成奖励、剧情节点奖励、小游戏结算奖励、成就奖励。
+- 奖励包内的物品奖励引用 `ItemDefinition`，成长经验奖励引用 Growth 的 SkillId / GrowthId。
+
+不要把“是否已经领取”写进奖励包资产；领取记录由 `IdempotencyKey`、运行时记录和存档负责。

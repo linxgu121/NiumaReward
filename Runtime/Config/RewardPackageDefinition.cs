@@ -8,7 +8,7 @@ namespace NiumaReward.Config
     /// 奖励包配置资产。
     /// 用于任务、剧情、活动等复用一组确定奖励。
     /// </summary>
-    [CreateAssetMenu(fileName = "RewardPackage", menuName = "Niuma/Reward/Reward Package")]
+    [CreateAssetMenu(fileName = "RewardPackage", menuName = "NiumaReward/Reward Package")]
     public sealed class RewardPackageDefinition : ScriptableObject
     {
         [Tooltip("奖励包稳定 ID。用于任务、剧情、存档和防重复领取，不要随资源文件名变化。")]
